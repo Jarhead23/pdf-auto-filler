@@ -5,6 +5,29 @@ import io
 import zipfile
 import os
 
+def check_password():
+    """Returns True if the user had the correct password."""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if st.session_state["password_correct"]:
+        return True
+
+    st.title("🔒 Restricted Access")
+    
+    # This line pulls the password from the hidden Streamlit Dashboard settings
+    # instead of your public code.
+    correct_password = st.secrets["MY_APP_PASSWORD"]
+    
+    pwd = st.text_input("Enter Password", type="password")
+    if st.button("Unlock"):
+        if pwd == correct_password:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("🚫 Incorrect Password")
+    return False
+
 # --- Helper to handle leading zeros ---
 def format_data(df):
     """Ensures specific columns maintain leading zeros."""
