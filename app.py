@@ -13,9 +13,9 @@ def check_password():
     """Returns True if the user had the correct password."""
     def password_entered():
         # Fetch password from Streamlit Secrets
-        if st.session_state["password"] == st.secrets["password"]:
+        if st.session_state["MY_APP_PASSWORD"] == st.secrets["MY_APP_PASSWORD"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # don't store password
+            del st.session_state["MY_APP_PASSWORD"]  # don't store password
         else:
             st.session_state["password_correct"] = False
 
