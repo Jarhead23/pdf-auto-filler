@@ -6,26 +6,40 @@ import zipfile
 import base64
 import json
 
-# --- 1. SECURE AUTHENTICATION ---
-st.set_page_config(page_title="GGC Fill Pro", layout="wide", page_icon="🎯")
 
+# --- 1. INITIALIZE SESSION STATE ---
+# This prevents the KeyError by ensuring the key exists the moment the app starts
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+# --- 2. THE LOGIN FUNCTION ---
 def check_password():
     """Returns True if the user had the correct password."""
     def password_entered():
-        # Fetch password from Streamlit Secrets
-        if st.session_state["MY_APP_PASSWORD"] == st.secrets["MY_APP_PASSWORD"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["MY_APP_PASSWORD"]  # don't store password
+        # Compare entered text to your secret password
+        if st.session_state["password_input"] == st.secrets["MY_APP_PASSWORD"]:
+            st.session_state["authenticated"] = True
+            del st.session_state["password_input"]  # remove password from state for security
         else:
-            st.session_state["password_correct"] = False
+            st.session_state["authenticated"] = False
 
-    if "password_correct" not in st.session_state:
-        st.title("🔐 GGC Client Portal")
-        st.text_input("Enter Access Code", type="password", on_change=password_entered, key="password")
-        if "password_correct" in st.session_state and not st.session_state["password_correct"]:
-            st.error("😕 Access code incorrect. Please try again.")
+    if not st.session_state["authenticated"]:
+        # Show input box if not authenticated
+        st.text_input(
+            "Enter Password to access the Batch Processor", 
+            type="password", 
+            on_change=password_entered, 
+            key="password_input"
+        )
         return False
     return True
+
+# --- 3. RUN THE CHECK ---
+if not check_password():
+    st.stop()  # Stop the rest of the app from running until they login
+
+# --- YOUR PDF CODE STARTS HERE ---
+st.success("Access Granted")
 
 # --- 2. CORE LOGIC ---
 def get_pdf_fields(template_stream):
