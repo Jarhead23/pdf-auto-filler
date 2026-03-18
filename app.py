@@ -32,13 +32,6 @@ def check_password():
         return False
     return True
 
-# --- 3. RUN THE CHECK ---
-if not check_password():
-    st.stop()  # Stop the rest of the app from running until they login
-
-# --- YOUR PDF CODE STARTS HERE ---
-st.success("Access Granted")
-
 # --- 2. CORE LOGIC ---
 def get_pdf_fields(template_stream):
     template_stream.seek(0)
@@ -58,7 +51,6 @@ def fill_single_pdf(template_stream, mapping_dict, row_data):
     if template.Root.AcroForm:
         template.Root.AcroForm.update(pdfrw.PdfDict(NeedAppearances=pdfrw.PdfObject("true")))
     
-    # Apply the mapping: {PDF_Field: Excel_Value}
     final_data = {pdf_f: str(row_data[ex_c]) for pdf_f, ex_c in mapping_dict.items() 
                   if ex_c != "None" and ex_c in row_data}
 
@@ -79,94 +71,101 @@ def fill_single_pdf(template_stream, mapping_dict, row_data):
 # --- 3. MAIN INTERFACE ---
 if check_password():
     
-    # SIDEBAR: The Import Logic
     with st.sidebar:
         st.header("💾 Configuration")
-        uploaded_config = st.file_uploader("Import Saved Mapping (.json)", type="json")
-        
-        # If a file is uploaded, load it into session state
+        uploaded_config = st.file_uploader("Import Multi-Mapping (.json)", type="json")
         if uploaded_config:
             st.session_state['loaded_map'] = json.load(uploaded_config)
             st.success("Config Loaded!")
-        else:
-            if 'loaded_map' not in st.session_state:
-                st.session_state['loaded_map'] = {}
+        elif 'loaded_map' not in st.session_state:
+            st.session_state['loaded_map'] = {}
 
-    st.title("🎯 GGC FILL Pro")
+    st.title("🎯 InstaFill Multi-Pro")
     
-    col_up1, col_up2 = st.columns(2)
+    # 1. UPLOADS
+    col_up1, col_up2 = st.columns([1, 1])
     with col_up1:
-        uploaded_tpl = st.file_uploader("1. Upload PDF Template", type="pdf")
+        # ALLOW MULTIPLE PDFS
+        uploaded_tpls = st.file_uploader("1. Upload PDF Templates", type="pdf", accept_multiple_files=True)
     with col_up2:
         uploaded_data = st.file_uploader("2. Upload Spreadsheet", type=["csv", "xlsx"])
 
-    if uploaded_tpl and uploaded_data:
-        # DATA LOADING WITH LEADING ZERO FIX
+    if uploaded_tpls and uploaded_data:
+        # DATA LOADING & LEADING ZERO FIX
         if uploaded_data.name.endswith('.csv'):
             df = pd.read_csv(uploaded_data, dtype=str, keep_default_na=False)
         else:
             df = pd.read_excel(uploaded_data, dtype=str, keep_default_na=False)
         
-        # Ensure Zip and Job IDs keep leading zeros
-        for c in ['Zip', 'Zip/Postal', 'Job ID', 'Postal Code', 'Destination Zip']:
+        cols_to_pad = ['Zip', 'Zip/Postal', 'Job ID', 'Postal Code', 'Destination Zip', 'ID']
+        for c in cols_to_pad:
             if c in df.columns:
                 df[c] = df[c].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(5)
 
         excel_cols = ["None"] + list(df.columns)
-        pdf_fields = get_pdf_fields(uploaded_tpl)
         
         st.divider()
-        st.subheader("🛠️ Smart Mapping")
+        st.subheader("🛠️ Smart Mapping (Per Template)")
         
-        mapping_results = {}
-        m_cols = st.columns(3)
-        
-        # Pull from the imported JSON if it exists
-        current_map = st.session_state.get('loaded_map', {})
+        # 2. MULTI-TEMPLATE MAPPING UI
+        all_mappings = {}
+        current_global_map = st.session_state.get('loaded_map', {})
 
-        for i, field in enumerate(pdf_fields):
-            with m_cols[i % 3]:
-                # 1. Check if the field is in the IMPORTED JSON
-                if field in current_map and current_map[field] in excel_cols:
-                    idx = excel_cols.index(current_map[field])
-                # 2. Check for an exact name match in Excel
-                elif field in excel_cols:
-                    idx = excel_cols.index(field)
-                else:
-                    idx = 0
+        # Create tabs for each PDF uploaded
+        tabs = st.tabs([tpl.name for tpl in uploaded_tpls])
+        
+        for i, tpl in enumerate(uploaded_tpls):
+            with tabs[i]:
+                pdf_fields = get_pdf_fields(tpl)
+                template_map = {}
+                # Get the saved map for THIS specific file if it exists in the JSON
+                saved_template_map = current_global_map.get(tpl.name, {})
                 
-                mapping_results[field] = st.selectbox(f"PDF: {field}", excel_cols, index=idx, key=f"m_{field}")
-
-        # EXPORT CONFIG BUTTON
-        st.download_button("💾 Export Current Mapping", json.dumps(mapping_results, indent=4), 
-                           file_name=f"map_{uploaded_tpl.name.replace('.pdf', '')}.json", 
-                           mime="application/json")
-
-        st.divider()
-        p_col, b_col = st.columns(2)
-        
-        with p_col:
-            # FIX: Switched to Download Preview for better reliability
-            preview_pdf = fill_single_pdf(uploaded_tpl, mapping_results, df.iloc[0])
-            st.download_button("👁️ Download Preview (Row 1)", preview_pdf.getvalue(), 
-                               file_name="PREVIEW.pdf", mime="application/pdf", use_container_width=True)
-
-        with b_col:
-            if st.button("🚀 Start Full Batch", type="primary", use_container_width=True):
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, "w") as zf:
-                    p = st.progress(0)
-                    for idx, row in df.iterrows():
-                        # FILENAME FIX: Use JobID_LastName_FirstName if available
-                        jid = str(row.get("Job ID", f"ID-{idx+1}"))
-                        ln = str(row.get("Last Name", "")).strip()
-                        fn = str(row.get("First Name", "")).strip()
-                        safe_name = f"{jid}_{ln}_{fn}".strip("_") or f"File_{idx+1}"
+                m_cols = st.columns(3)
+                for j, field in enumerate(pdf_fields):
+                    with m_cols[j % 3]:
+                        # Logic: Saved JSON -> Auto-Match -> None
+                        if field in saved_template_map and saved_template_map[field] in excel_cols:
+                            idx = excel_cols.index(saved_template_map[field])
+                        elif field in excel_cols:
+                            idx = excel_cols.index(field)
+                        else:
+                            idx = 0
                         
-                        full_name = f"{safe_name}.pdf"
-                        zf.writestr(full_name, fill_single_pdf(uploaded_tpl, mapping_results, row).getvalue())
-                        p.progress((idx + 1) / len(df))
+                        template_map[field] = st.selectbox(
+                            f"Field: {field}", excel_cols, index=idx, key=f"m_{tpl.name}_{field}"
+                        )
+                all_mappings[tpl.name] = template_map
+
+        # EXPORT MULTI-CONFIG
+        st.download_button("💾 Export All Mappings", json.dumps(all_mappings, indent=4), 
+                           file_name="multi_template_config.json", mime="application/json")
+
+        st.divider()
+        
+        # 3. BATCH EXECUTION
+        if st.button("🚀 Start Multi-Template Batch", type="primary", use_container_width=True):
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w") as zf:
+                total_files = len(df) * len(uploaded_tpls)
+                p = st.progress(0)
+                count = 0
                 
-                st.success("Batch Processing Complete!")
-                st.download_button("📥 Download Final ZIP", zip_buffer.getvalue(), 
-                                   "InstaFill_Results.zip", "application/zip", use_container_width=True)
+                for idx, row in df.iterrows():
+                    jid = str(row.get("Job ID", f"ID-{idx+1}"))
+                    ln = str(row.get("Last Name", "")).strip()
+                    fn = str(row.get("First Name", "")).strip()
+                    
+                    for tpl in uploaded_tpls:
+                        tpl_short = tpl.name.replace(".pdf", "")
+                        file_name = f"{jid}_{ln}_{fn}_{tpl_short}.pdf".strip("_")
+                        
+                        pdf_bytes = fill_single_pdf(tpl, all_mappings[tpl.name], row)
+                        zf.writestr(file_name, pdf_bytes.getvalue())
+                        
+                        count += 1
+                        p.progress(count / total_files)
+                
+            st.success(f"Batch Complete! Generated {count} documents.")
+            st.download_button("📥 Download ZIP Package", zip_buffer.getvalue(), 
+                               "InstaFill_Final.zip", "application/zip", use_container_width=True)
