@@ -5,22 +5,41 @@ import io
 import zipfile
 import json
 
-# --- 1. SECURE AUTHENTICATION ---
-st.set_page_config(page_title="GGC Fill Pro", layout="wide", page_icon="🎯")
+import streamlit as st
 
+# --- 1. INITIALIZE SESSION STATE ---
+# This prevents the KeyError by ensuring the key exists the moment the app starts
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+# --- 2. THE LOGIN FUNCTION ---
 def check_password():
-    if "password_correct" not in st.session_state:
-        st.title("🔐 GGC Portal")
-        pw = st.text_input("Enter Access Code", type="password")
-        if st.button("Log In"):
-            # This looks for 'password' in your Streamlit Cloud Secrets
-            if pw == st.secrets.get("password", "admin"): 
-                st.session_state["password_correct"] = True
-                st.rerun()
-            else:
-                st.error("Invalid Code")
+    """Returns True if the user had the correct password."""
+    def password_entered():
+        # Compare entered text to your secret password
+        if st.session_state["password_input"] == st.secrets["MY_APP_PASSWORD"]:
+            st.session_state["authenticated"] = True
+            del st.session_state["password_input"]  # remove password from state for security
+        else:
+            st.session_state["authenticated"] = False
+
+    if not st.session_state["authenticated"]:
+        # Show input box if not authenticated
+        st.text_input(
+            "Enter Password to access the Batch Processor", 
+            type="password", 
+            on_change=password_entered, 
+            key="password_input"
+        )
         return False
     return True
+
+# --- 3. RUN THE CHECK ---
+if not check_password():
+    st.stop()  # Stop the rest of the app from running until they login
+
+# --- YOUR PDF CODE STARTS HERE ---
+st.success("Access Granted")
 
 # --- 2. CORE LOGIC ---
 def get_pdf_fields(template_stream):
