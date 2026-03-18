@@ -138,7 +138,7 @@ if check_password():
                 all_mappings[tpl.name] = template_map
 
         # EXPORT MULTI-CONFIG
-        #st.download_button("💾 Export All Mappings", json.dumps(all_mappings, indent=4), 
+        st.download_button("💾 Export All Mappings", json.dumps(all_mappings, indent=4), 
                            #file_name="multi_template_config.json", mime="application/json")
 
         st.divider()
