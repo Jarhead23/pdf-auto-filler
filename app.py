@@ -80,7 +80,7 @@ if check_password():
         elif 'loaded_map' not in st.session_state:
             st.session_state['loaded_map'] = {}
 
-    st.title("🎯 InstaFill Multi-Pro")
+    st.title("🎯 GGC Fill Multi-Pro")
     
     # 1. UPLOADS
     col_up1, col_up2 = st.columns([1, 1])
@@ -138,8 +138,8 @@ if check_password():
                 all_mappings[tpl.name] = template_map
 
         # EXPORT MULTI-CONFIG
-        st.download_button("💾 Export All Mappings", json.dumps(all_mappings, indent=4), 
-                           file_name="multi_template_config.json", mime="application/json")
+        #st.download_button("💾 Export All Mappings", json.dumps(all_mappings, indent=4), 
+                           #file_name="multi_template_config.json", mime="application/json")
 
         st.divider()
         
@@ -168,4 +168,4 @@ if check_password():
                 
             st.success(f"Batch Complete! Generated {count} documents.")
             st.download_button("📥 Download ZIP Package", zip_buffer.getvalue(), 
-                               "InstaFill_Final.zip", "application/zip", use_container_width=True)
+                               "GGC_Final.zip", "application/zip", use_container_width=True)
