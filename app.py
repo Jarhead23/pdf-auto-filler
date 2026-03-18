@@ -170,43 +170,43 @@ if check_password():
             st.download_button("📥 Download ZIP Package", zip_buffer.getvalue(), 
                                "GGC_Final.zip", "application/zip", use_container_width=True)
             
-                # --- DOCUMENTATION GENERATOR ---
-st.divider()
-st.subheader("📄 Project Documentation")
-st.info("Download the official manuals and technical specifications for this software.")
-
-doc_col1, doc_col2, doc_col3 = st.columns(3)
-
-# 1. User Guide Content
-user_guide_text = """# GGC Fill Multi-Pro: User Guide
-1. **Login:** Enter your Access Code.
-2. **Upload:** Add multiple PDF templates and one Excel/CSV file.
-3. **Map:** Use the tabs to link PDF fields to Spreadsheet columns.
-4. **Export Config:** Save your mapping as a .json file for future use.
-5. **Batch:** Click 'Start Multi-Template Batch' to generate your ZIP."""
-
-with doc_col1:
-    st.download_button("📥 Download User Guide", user_guide_text, 
-                       file_name="User_Guide_.md", mime="text/markdown")
-
-# 2. Technical Docs Content
-tech_docs_text = """# Technical Documentation
-- **Stack:** Streamlit, Pandas, pdfrw, Openpyxl.
-- **Logic:** In-memory PDF dictionary injection via /Annots key.
-- **Security:** st.secrets for authentication; zero-disk persistence.
-- **Data:** Regex padding for leading zeros on Zip/ID columns."""
-
-with doc_col2:
-    st.download_button("📥 Download Tech Docs", tech_docs_text, 
-                       file_name="Technical_Docs.md", mime="text/markdown")
-
-# 3. SRS Content
-srs_text = """# Software Requirements Specification (SRS)
-- **FR1:** Secure authentication gate.
-- **FR2:** Support for N-templates to 1-dataset.
-- **FR3:** JSON-based configuration portability.
-- **FR4:** Preservation of numerical string formatting."""
-
-with doc_col3:
-    st.download_button("📥 Download SRS", srs_text, 
-                       file_name="SRS_Specification.md", mime="text/markdown")
+                        # --- DOCUMENTATION GENERATOR ---
+        st.divider()
+        st.subheader("📄 Project Documentation")
+        st.info("Download the official manuals and technical specifications for this software.")
+        
+        doc_col1, doc_col2, doc_col3 = st.columns(3)
+        
+        # 1. User Guide Content
+        user_guide_text = """# GGC Fill Multi-Pro: User Guide
+        1. **Login:** Enter your Access Code.
+        2. **Upload:** Add multiple PDF templates and one Excel/CSV file.
+        3. **Map:** Use the tabs to link PDF fields to Spreadsheet columns.
+        4. **Export Config:** Save your mapping as a .json file for future use.
+        5. **Batch:** Click 'Start Multi-Template Batch' to generate your ZIP."""
+        
+        with doc_col1:
+            st.download_button("📥 Download User Guide", user_guide_text, 
+                               file_name="User_Guide_.md", mime="text/markdown")
+        
+        # 2. Technical Docs Content
+        tech_docs_text = """# Technical Documentation
+        - **Stack:** Streamlit, Pandas, pdfrw, Openpyxl.
+        - **Logic:** In-memory PDF dictionary injection via /Annots key.
+        - **Security:** st.secrets for authentication; zero-disk persistence.
+        - **Data:** Regex padding for leading zeros on Zip/ID columns."""
+        
+        with doc_col2:
+            st.download_button("📥 Download Tech Docs", tech_docs_text, 
+                               file_name="Technical_Docs.md", mime="text/markdown")
+        
+        # 3. SRS Content
+        srs_text = """# Software Requirements Specification (SRS)
+        - **FR1:** Secure authentication gate.
+        - **FR2:** Support for N-templates to 1-dataset.
+        - **FR3:** JSON-based configuration portability.
+        - **FR4:** Preservation of numerical string formatting."""
+        
+        with doc_col3:
+            st.download_button("📥 Download SRS", srs_text, 
+                               file_name="SRS_Specification.md", mime="text/markdown")
