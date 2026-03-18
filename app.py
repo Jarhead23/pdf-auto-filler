@@ -5,8 +5,6 @@ import io
 import zipfile
 import json
 
-import streamlit as st
-
 # --- 1. INITIALIZE SESSION STATE ---
 # This prevents the KeyError by ensuring the key exists the moment the app starts
 if "authenticated" not in st.session_state:
@@ -94,7 +92,7 @@ if check_password():
             if 'loaded_map' not in st.session_state:
                 st.session_state['loaded_map'] = {}
 
-    st.title("🎯 InstaFill Pro")
+    st.title("🎯 GGC FILL Pro")
     
     col_up1, col_up2 = st.columns(2)
     with col_up1:
