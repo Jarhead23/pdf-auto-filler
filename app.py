@@ -97,7 +97,7 @@ if check_password():
         else:
             df = pd.read_excel(uploaded_data, dtype=str, keep_default_na=False)
         
-        cols_to_pad = ['Zip', 'Zip/Postal', 'Job ID', 'Postal Code', 'Destination Zip', 'ID']
+        cols_to_pad = ['Zip/Postal', 'Job ID', 'Destination Zip/Postal']
         for c in cols_to_pad:
             if c in df.columns:
                 df[c] = df[c].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(5)
