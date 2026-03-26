@@ -175,29 +175,29 @@ if check_password():
             st.download_button("📥 Download ZIP Package", zip_buffer.getvalue(), 
                                "GGC_Final.zip", "application/zip", use_container_width=True)
             '''
-            
-            if st.button("🚀 Start Multi-Template Batch", type="primary", use_container_width=True):
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, "w") as zf:
-                    total_files = len(df) * len(uploaded_tpls)
-                    p = st.progress(0)
-                    count = 0
+        # 3. BATCH EXECUTION    
+        if st.button("🚀 Start Multi-Template Batch", type="primary", use_container_width=True):
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w") as zf:
+                total_files = len(df) * len(uploaded_tpls)
+                p = st.progress(0)
+                count = 0
+    
+                for count_idx, (idx, row) in enumerate(df.iterrows()):  # ← fix here
+                    jid = str(row.get("Job ID", f"ID-{count_idx+1}"))  # ← and here
+                    ln = str(row.get("Last Name", "")).strip()
+                    fn = str(row.get("First Name", "")).strip()
         
-                    for count_idx, (idx, row) in enumerate(df.iterrows()):  # ← fix here
-                        jid = str(row.get("Job ID", f"ID-{count_idx+1}"))  # ← and here
-                        ln = str(row.get("Last Name", "")).strip()
-                        fn = str(row.get("First Name", "")).strip()
+                for tpl in uploaded_tpls:
+                    tpl_short = tpl.name.replace(".pdf", "")
+                    file_name = f"{jid}_{ln}_{fn}_{tpl_short}.pdf".strip("_")
             
-                    for tpl in uploaded_tpls:
-                        tpl_short = tpl.name.replace(".pdf", "")
-                        file_name = f"{jid}_{ln}_{fn}_{tpl_short}.pdf".strip("_")
-                
-                        pdf_bytes = fill_single_pdf(tpl, all_mappings[tpl.name], row)
-                        zf.writestr(file_name, pdf_bytes.getvalue())
-                
-                        count += 1
-                        p.progress(count / total_files)
-        
+                    pdf_bytes = fill_single_pdf(tpl, all_mappings[tpl.name], row)
+                    zf.writestr(file_name, pdf_bytes.getvalue())
+            
+                    count += 1
+                    p.progress(count / total_files)
+    
             st.success(f"Batch Complete! Generated {count} documents.")
             st.download_button("📥 Download ZIP Package", zip_buffer.getvalue(), 
                                "GGC_Final.zip", "application/zip", use_container_width=True)
