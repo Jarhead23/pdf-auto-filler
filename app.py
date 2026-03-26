@@ -1,84 +1,20 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import pdfrw
+import io
+import zipfile
 import json
 
-# ── Page config ──────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="Moving Co. Inventory Audit",
-    page_icon="🚛",
-    layout="wide",
-)
-
-# ── Custom CSS ────────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'DM Mono', monospace;
-}
-h1, h2, h3 {
-    font-family: 'Syne', sans-serif !important;
-}
-.block-container { padding-top: 2rem; }
-
-.truck-header {
-    background: #1a1a2e;
-    color: #f0a500;
-    padding: 0.6rem 1.2rem;
-    border-radius: 6px;
-    font-family: 'Syne', sans-serif;
-    font-size: 1.15rem;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.5rem;
-}
-.audit-box {
-    background: #f9f6f0;
-    border: 2px solid #1a1a2e;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-top: 1rem;
-    font-family: 'DM Mono', monospace;
-    white-space: pre-wrap;
-    font-size: 0.82rem;
-    line-height: 1.7;
-    color: #1a1a2e;
-}
-.stButton > button {
-    background-color: #f0a500;
-    color: #1a1a2e;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    border: none;
-    border-radius: 6px;
-    padding: 0.5rem 1.4rem;
-}
-.stButton > button:hover {
-    background-color: #1a1a2e;
-    color: #f0a500;
-}
-div[data-testid="stDownloadButton"] > button {
-    background-color: #1a1a2e;
-    color: #f0a500;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    border: none;
-    border-radius: 6px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ── 1. INITIALIZE SESSION STATE ───────────────────────────────────────────────
-# Ensures the key exists the moment the app starts, preventing KeyError
+# --- 1. INITIALIZE SESSION STATE ---
+# This prevents the KeyError by ensuring the key exists the moment the app starts
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-# ── 2. LOGIN FUNCTION ─────────────────────────────────────────────────────────
+# --- 2. THE LOGIN FUNCTION ---
 def check_password():
-    """Returns True if the user entered the correct password."""
+    """Returns True if the user had the correct password."""
     def password_entered():
+        # Compare entered text to your secret password
         if st.session_state["password_input"] == st.secrets["MY_APP_PASSWORD"]:
             st.session_state["authenticated"] = True
             del st.session_state["password_input"]  # remove password from state for security
@@ -86,257 +22,191 @@ def check_password():
             st.session_state["authenticated"] = False
 
     if not st.session_state["authenticated"]:
+        # Show input box if not authenticated
         st.text_input(
-            "Enter Password to access the Inventory Audit",
-            type="password",
-            on_change=password_entered,
-            key="password_input",
+            "Enter Password to access the Batch Processor", 
+            type="password", 
+            on_change=password_entered, 
+            key="password_input"
         )
         return False
     return True
 
-if not check_password():
-    st.stop()
+# --- 2. CORE LOGIC ---
+def get_pdf_fields(template_stream):
+    template_stream.seek(0)
+    reader = pdfrw.PdfReader(fdata=template_stream.read())
+    fields = []
+    for page in reader.pages:
+        if page.Annots:
+            for ann in page.Annots:
+                if ann.Subtype == "/Widget" and ann.T:
+                    name = ann.T[1:-1] if ann.T.startswith("(") else str(ann.T)
+                    if name not in fields: fields.append(name)
+    return fields
 
-# ── Session state init ────────────────────────────────────────────────────────
-TRUCKS = ["Truck 1", "Truck 2", "Truck 3", "Truck 4"]
+def fill_single_pdf(template_stream, mapping_dict, row_data):
+    template_stream.seek(0)
+    template = pdfrw.PdfReader(fdata=template_stream.read())
+    if template.Root.AcroForm:
+        template.Root.AcroForm.update(pdfrw.PdfDict(NeedAppearances=pdfrw.PdfObject("true")))
+    
+    final_data = {pdf_f: str(row_data[ex_c]) for pdf_f, ex_c in mapping_dict.items() 
+                  if ex_c != "None" and ex_c in row_data}
 
-if "inventory" not in st.session_state:
-    st.session_state.inventory = {t: [] for t in TRUCKS}
-if "auditor" not in st.session_state:
-    st.session_state.auditor = ""
-if "audit_date" not in st.session_state:
-    st.session_state.audit_date = datetime.today()
+    for page in template.pages:
+        if page.Annots:
+            for ann in page.Annots:
+                if ann.Subtype == "/Widget":
+                    key = ann.T[1:-1] if ann.T and ann.T.startswith("(") else str(ann.T)
+                    if key in final_data:
+                        ann.update(pdfrw.PdfDict(V=pdfrw.PdfString.encode(final_data[key])))
+                        ann.AP = ""
+    
+    out = io.BytesIO()
+    pdfrw.PdfWriter().write(out, template)
+    out.seek(0)
+    return out
 
-# ── Helper functions ──────────────────────────────────────────────────────────
-def build_template_json() -> str:
-    """Export current inventory as a reusable JSON template."""
-    template = {}
-    for truck in TRUCKS:
-        template[truck] = [
-            {"Item": row.get("Item", ""), "Quantity": row.get("Quantity", 0)}
-            for row in st.session_state.inventory[truck]
-            if str(row.get("Item", "")).strip()
-        ]
-    return json.dumps(template, indent=2)
+# --- 3. MAIN INTERFACE ---
+if check_password():
+    
+    with st.sidebar:
+        st.header("💾 Configuration")
+        uploaded_config = st.file_uploader("Import Multi-Mapping (.json)", type="json")
+        if uploaded_config:
+            st.session_state['loaded_map'] = json.load(uploaded_config)
+            st.success("Config Loaded!")
+        elif 'loaded_map' not in st.session_state:
+            st.session_state['loaded_map'] = {}
 
+    st.title("🎯 GGC Fill Multi-Pro")
+    
+    # 1. UPLOADS
+    col_up1, col_up2 = st.columns([1, 1])
+    with col_up1:
+        # ALLOW MULTIPLE PDFS
+        uploaded_tpls = st.file_uploader("1. Upload PDF Templates", type="pdf", accept_multiple_files=True)
+    with col_up2:
+        uploaded_data = st.file_uploader("2. Upload Spreadsheet", type=["csv", "xlsx"])
 
-def load_template_file(uploaded_file) -> dict:
-    """Parse an uploaded JSON template."""
-    raw = uploaded_file.read()
-    return json.loads(raw)
-
-
-def build_report_text() -> str:
-    date_str = st.session_state.audit_date.strftime("%B %d, %Y")
-    auditor = st.session_state.auditor.strip() or "N/A"
-    lines = []
-    lines.append("=" * 58)
-    lines.append("       MONTHLY INVENTORY AUDIT REPORT")
-    lines.append("=" * 58)
-    lines.append(f"  Date     : {date_str}")
-    lines.append(f"  Auditor  : {auditor}")
-    lines.append(f"  Company  : Moving Company")
-    lines.append("=" * 58)
-
-    grand_total = 0
-    for truck in TRUCKS:
-        items = st.session_state.inventory[truck]
-        lines.append("")
-        lines.append(f"  ── {truck.upper()} ──────────────────────────────────")
-        if not items:
-            lines.append("    (no items recorded)")
+    if uploaded_tpls and uploaded_data:
+        # DATA LOADING & LEADING ZERO FIX
+        if uploaded_data.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_data, dtype=str, keep_default_na=False)
         else:
-            lines.append(f"    {'ITEM':<35} {'QTY':>6}")
-            lines.append(f"    {'-'*35} {'------':>6}")
-            truck_total = 0
-            for row in items:
-                name = str(row.get("Item", "")).strip()
-                qty = int(row.get("Quantity", 0) or 0)
-                truck_total += qty
-                lines.append(f"    {name:<35} {qty:>6}")
-            lines.append(f"    {'─'*35} {'──────':>6}")
-            lines.append(f"    {'TRUCK TOTAL':<35} {truck_total:>6}")
-            grand_total += truck_total
+            df = pd.read_excel(uploaded_data, dtype=str, keep_default_na=False)
+        
+        cols_to_pad = ['Zip/Postal', 'Job ID', 'Destination Zip/Postal']
+        for c in cols_to_pad:
+            if c in df.columns:
+                df[c] = df[c].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(5)
 
-    lines.append("")
-    lines.append("=" * 58)
-    lines.append(f"  {'GRAND TOTAL (ALL TRUCKS)':<34} {grand_total:>6}")
-    lines.append("=" * 58)
-    lines.append(f"\n  Report generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append("=" * 58)
-    return "\n".join(lines)
+        excel_cols = ["None"] + list(df.columns)
+        
+        st.divider()
+        st.subheader("🛠️ Smart Mapping (Per Template)")
+        
+        # 2. MULTI-TEMPLATE MAPPING UI
+        all_mappings = {}
+        current_global_map = st.session_state.get('loaded_map', {})
 
+        # Create tabs for each PDF uploaded
+        tabs = st.tabs([tpl.name for tpl in uploaded_tpls])
+        
+        for i, tpl in enumerate(uploaded_tpls):
+            with tabs[i]:
+                pdf_fields = get_pdf_fields(tpl)
+                template_map = {}
+                # Get the saved map for THIS specific file if it exists in the JSON
+                saved_template_map = current_global_map.get(tpl.name, {})
+                
+                m_cols = st.columns(3)
+                for j, field in enumerate(pdf_fields):
+                    with m_cols[j % 3]:
+                        # Logic: Saved JSON -> Auto-Match -> None
+                        if field in saved_template_map and saved_template_map[field] in excel_cols:
+                            idx = excel_cols.index(saved_template_map[field])
+                        elif field in excel_cols:
+                            idx = excel_cols.index(field)
+                        else:
+                            idx = 0
+                        
+                        template_map[field] = st.selectbox(
+                            f"Field: {field}", excel_cols, index=idx, key=f"m_{tpl.name}_{field}"
+                        )
+                all_mappings[tpl.name] = template_map
 
-def build_csv() -> str:
-    rows = []
-    for truck in TRUCKS:
-        for row in st.session_state.inventory[truck]:
-            rows.append({
-                "Truck": truck,
-                "Item": row.get("Item", ""),
-                "Quantity": row.get("Quantity", 0),
-                "Audit Date": st.session_state.audit_date.strftime("%Y-%m-%d"),
-                "Auditor": st.session_state.auditor.strip(),
-            })
-    if not rows:
-        return "Truck,Item,Quantity,Audit Date,Auditor\n"
-    return pd.DataFrame(rows).to_csv(index=False)
+        # EXPORT MULTI-CONFIG
+        st.download_button("💾 Export All Mappings", json.dumps(all_mappings, indent=4), 
+                           file_name="multi_template_config.json", mime="application/json")
 
-
-# ── Header ────────────────────────────────────────────────────────────────────
-st.markdown("# 🚛 Monthly Inventory Audit")
-st.markdown("**Moving Company — Truck Inventory Tracker**")
-
-st.divider()
-
-# ── Import / Save Template ────────────────────────────────────────────────────
-with st.expander("📂 Import / Save Item Template", expanded=False):
-    st.markdown(
-        "**Save** your current items as a template to reuse next month. "
-        "**Import** a saved template to pre-fill items and quantities — "
-        "then just update the counts before generating your report."
-    )
-    imp_col, exp_col = st.columns(2)
-
-    with imp_col:
-        st.markdown("#### ⬆️ Import Template")
-        uploaded = st.file_uploader(
-            "Upload a saved `.json` template", type=["json"], key="template_upload"
-        )
-        load_mode = st.radio(
-            "On import:",
-            ["Replace all items", "Merge with existing items"],
-            horizontal=True,
-        )
-        if st.button("Load Template") and uploaded:
-            try:
-                data = load_template_file(uploaded)
-                for truck in TRUCKS:
-                    incoming = data.get(truck, [])
-                    if load_mode == "Replace all items":
-                        st.session_state.inventory[truck] = incoming
-                    else:
-                        existing_names = {
-                            r.get("Item", "").lower()
-                            for r in st.session_state.inventory[truck]
-                        }
-                        for row in incoming:
-                            if row.get("Item", "").lower() not in existing_names:
-                                st.session_state.inventory[truck].append(row)
-                st.success("✅ Template loaded! Update quantities in each truck tab.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Could not read template: {e}")
-
-    with exp_col:
-        st.markdown("#### 💾 Save as Template")
-        st.markdown(
-            "Downloads a `.json` file with all current items and quantities. "
-            "Re-import it at the start of next month's audit."
-        )
-        st.download_button(
-            label="⬇️ Download Template (.json)",
-            data=build_template_json(),
-            file_name=f"inventory_template_{datetime.today().strftime('%Y%m')}.json",
-            mime="application/json",
-        )
-
-st.divider()
-
-# ── Audit meta ────────────────────────────────────────────────────────────────
-col_a, col_b = st.columns(2)
-with col_a:
-    st.session_state.auditor = st.text_input(
-        "Auditor Name", value=st.session_state.auditor, placeholder="Your name"
-    )
-with col_b:
-    st.session_state.audit_date = st.date_input(
-        "Audit Date", value=st.session_state.audit_date
-    )
-
-st.divider()
-
-# ── Truck tabs ────────────────────────────────────────────────────────────────
-tabs = st.tabs([f"🚛 {t}" for t in TRUCKS])
-
-for i, tab in enumerate(tabs):
-    truck = TRUCKS[i]
-    with tab:
-        st.markdown(
-            f'<div class="truck-header">📦 {truck} — Item Entry</div>',
-            unsafe_allow_html=True,
-        )
-
-        with st.form(key=f"form_{truck}", clear_on_submit=True):
-            c1, c2, c3 = st.columns([4, 2, 1])
-            with c1:
-                item_name = st.text_input(
-                    "Item Name", placeholder="e.g. Moving blankets", key=f"item_{truck}"
-                )
-            with c2:
-                qty = st.number_input("Quantity", min_value=0, step=1, key=f"qty_{truck}")
-            with c3:
-                st.markdown("<br>", unsafe_allow_html=True)
-                submitted = st.form_submit_button("➕ Add")
-
-            if submitted:
-                if item_name.strip():
-                    st.session_state.inventory[truck].append(
-                        {"Item": item_name.strip(), "Quantity": int(qty)}
-                    )
-                    st.success(f"Added: {item_name.strip()} × {qty}")
-                else:
-                    st.warning("Please enter an item name.")
-
-        items = st.session_state.inventory[truck]
-        if items:
-            df = pd.DataFrame(items)
-            df.index = df.index + 1
-
-            edited = st.data_editor(
-                df,
-                use_container_width=True,
-                num_rows="dynamic",
-                key=f"editor_{truck}",
-            )
-            st.session_state.inventory[truck] = edited.to_dict("records")
-
-            total = sum(r.get("Quantity", 0) or 0 for r in st.session_state.inventory[truck])
-            st.markdown(f"**Total items counted: `{total}`**")
-
-            if st.button(f"🗑 Clear {truck}", key=f"clear_{truck}"):
-                st.session_state.inventory[truck] = []
-                st.rerun()
-        else:
-            st.info("No items yet. Add items above, or import a template using the panel at the top.")
-
-st.divider()
-
-# ── Generate report ───────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns([2, 1, 1])
-
-with col1:
-    if st.button("📋 Generate Audit Report"):
-        report = build_report_text()
-        st.markdown(
-            '<div class="audit-box">' + report.replace("\n", "<br>") + "</div>",
-            unsafe_allow_html=True,
-        )
-        st.session_state["last_report"] = report
-
-if "last_report" in st.session_state:
-    with col2:
-        st.download_button(
-            label="⬇️ Download .txt",
-            data=st.session_state["last_report"],
-            file_name=f"audit_{st.session_state.audit_date.strftime('%Y%m')}.txt",
-            mime="text/plain",
-        )
-    with col3:
-        st.download_button(
-            label="⬇️ Download .csv",
-            data=build_csv(),
-            file_name=f"audit_{st.session_state.audit_date.strftime('%Y%m')}.csv",
-            mime="text/csv",
-        )
+        st.divider()
+        
+        # 3. BATCH EXECUTION
+        if st.button("🚀 Start Multi-Template Batch", type="primary", use_container_width=True):
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w") as zf:
+                total_files = len(df) * len(uploaded_tpls)
+                p = st.progress(0)
+                count = 0
+                
+                for idx, row in df.iterrows():
+                    jid = str(row.get("Job ID", f"ID-{idx+1}"))
+                    ln = str(row.get("Last Name", "")).strip()
+                    fn = str(row.get("First Name", "")).strip()
+                    
+                    for tpl in uploaded_tpls:
+                        tpl_short = tpl.name.replace(".pdf", "")
+                        file_name = f"{jid}_{ln}_{fn}_{tpl_short}.pdf".strip("_")
+                        
+                        pdf_bytes = fill_single_pdf(tpl, all_mappings[tpl.name], row)
+                        zf.writestr(file_name, pdf_bytes.getvalue())
+                        
+                        count += 1
+                        p.progress(count / total_files)
+                
+            st.success(f"Batch Complete! Generated {count} documents.")
+            st.download_button("📥 Download ZIP Package", zip_buffer.getvalue(), 
+                               "GGC_Final.zip", "application/zip", use_container_width=True)
+            
+                           # --- DOCUMENTATION GENERATOR ---
+    st.divider()
+    st.subheader("📄 Project Documentation")
+    st.info("Download the official manuals and technical specifications for this software.")
+    
+    doc_col1, doc_col2, doc_col3 = st.columns(3)
+    
+    # 1. User Guide Content
+    user_guide_text = """# GGC Fill Multi-Pro: User Guide
+    1. **Login:** Enter your Access Code.
+    2. **Upload:** Add multiple PDF templates and one Excel/CSV file.
+    3. **Map:** Use the tabs to link PDF fields to Spreadsheet columns.
+    4. **Export Config:** Save your mapping as a .json file for future use.
+    5. **Batch:** Click 'Start Multi-Template Batch' to generate your ZIP."""
+    
+    with doc_col1:
+        st.download_button("📥 Download User Guide", user_guide_text, 
+                           file_name="User_Guide_.md", mime="text/markdown")
+    
+    # 2. Technical Docs Content
+    tech_docs_text = """# Technical Documentation
+    - **Stack:** Streamlit, Pandas, pdfrw, Openpyxl.
+    - **Logic:** In-memory PDF dictionary injection via /Annots key.
+    - **Security:** st.secrets for authentication; zero-disk persistence.
+    - **Data:** Regex padding for leading zeros on Zip/ID columns."""
+    
+    with doc_col2:
+        st.download_button("📥 Download Tech Docs", tech_docs_text, 
+                           file_name="Technical_Docs.md", mime="text/markdown")
+    
+    # 3. SRS Content
+    srs_text = """# Software Requirements Specification (SRS)
+    - **FR1:** Secure authentication gate.
+    - **FR2:** Support for N-templates to 1-dataset.
+    - **FR3:** JSON-based configuration portability.
+    - **FR4:** Preservation of numerical string formatting."""
+    
+    with doc_col3:
+        st.download_button("📥 Download SRS", srs_text, 
+                           file_name="SRS_Specification.md", mime="text/markdown")
