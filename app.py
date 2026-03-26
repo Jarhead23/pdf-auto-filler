@@ -5,6 +5,10 @@ import io
 import zipfile
 import json
 
+# ── Page config ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="PDF Batch Generator"
+)
 # --- 1. INITIALIZE SESSION STATE ---
 # This prevents the KeyError by ensuring the key exists the moment the app starts
 if "authenticated" not in st.session_state:
