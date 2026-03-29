@@ -5,6 +5,12 @@ import io
 import zipfile
 import json
 
+# ── Page config ──────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="GGC PDF Batch Automator",
+    page_icon="🚛",
+    layout="wide",
+)
 # --- 1. INITIALIZE SESSION STATE ---
 # This prevents the KeyError by ensuring the key exists the moment the app starts
 if "authenticated" not in st.session_state:
