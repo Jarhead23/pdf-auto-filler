@@ -2,4 +2,3 @@ streamlit
 pandas
 pdfrw
 openpyxl
-pdf2image
